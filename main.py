@@ -5,6 +5,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
+import pandas as pd
+import time
+
 
 PATH_TO_DRIVER = "C:/Chrome Driver/chromedriver.exe"    # path to where your 'chromedriver.exe' is installed
 WEBSITE_URL = "https://soundcloud.com/"
@@ -42,24 +45,65 @@ else:
         # see the top-50 playlist
         top_50_playlist.click()
 
-        # making soup with the current page source
-        soup = BeautifulSoup(driver.page_source, "html.parser")
+        try:
+            # getting the driver to wait until the first song has loaded
+            first_song = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div[2]/div[2]/div/div/div[2]/div[1]/div/div[2]/ul/li[1]/div/div[3]")))
+        except TimeoutException:
+            print("The request timed out trying to find the element.")
+        else:
+            # scrolling down to the end of the page to load all the songs
+            not_yet_at_page_end = True
+            previous_heights = []
 
-        # finding all the songs and the number of times each was played
-        song_names = soup.select("span.systemPlaylistBannerItem__trackTitle.sc-font")
-        times_played_list = soup.select("span.systemPlaylistBannerItem__playCount.sc-ministats.sc-ministats-inverted.sc-ministats-small.sc-ministats-plays")
+            while not_yet_at_page_end:
+                # wait for 2 seconds
+                time.sleep(2)
 
-        top_50_songs = []   # list of the top-50 songs
+                # scrolling down to the end of the page to load the songs and returning the current page height
+                page_height = driver.execute_script("window.scrollTo(0, document.body.scrollHeight);return document.body.scrollHeight")
 
-        # looping through the songs and the number of times each song was played
-        for song, times_played in zip(song_names, times_played_list):
-            # appending a dictionary with a key and the value to the 'top_50_songs' list
-            top_50_songs.append({
-                "song": song.getText(),
-                "times_played": times_played.getText().replace("\n", "").replace(" ", "")   # remove newlines and spaces
-            })
+                # appending the current page height to the 'previous_heights' array
+                previous_heights.append(page_height)
 
-        print(top_50_songs)
+                # start checking if we have reached the end when the page has been scrolled more than once
+                if len(previous_heights) > 1:
+                    # if the last 2 heights are the same, then we have reached the end of the page
+                    if previous_heights[-1] == previous_heights[-2]:
+                        not_yet_at_page_end = False
+
+            current_page_html = driver.page_source
+
+            # making soup with the current page
+            soup = BeautifulSoup(current_page_html, "html.parser")
+
+            # finding all the songs and the number of times each was played
+            songs = soup.select("div.trackItem__content.sc-truncate")
+            count_info = soup.select("div.trackItem__additional")
+
+            top_50_songs = []   # list of the top-50 songs
+
+            # looping through the songs and the number of times each song was played
+            for song, count in zip(songs, count_info):
+                song_name = song.select_one("a.trackItem__trackTitle.sc-link-dark.sc-link-primary.sc-font-light")
+                no_of_times_played = count.select_one("span.trackItem__playCount.sc-ministats.sc-ministats-medium.sc-ministats-plays")
+
+                # checking if the number of times played is not available for a specific song
+                if no_of_times_played is None:
+                    times_played = 0
+                else:
+                    times_played = no_of_times_played.getText().replace("\n", "").replace(" ", "")   # remove newlines and spaces
+
+                # appending a dictionary with a key and the value to the 'top_50_songs' list
+                top_50_songs.append({
+                    "song": song_name.getText(),
+                    "times_played": times_played
+                })
+
+            # creating a dataframe from the 'top_50_songs' list
+            data = pd.DataFrame(top_50_songs, columns=["song", "times_played"])
+
+            # writing the dataframe created to a csv file
+            data.to_csv("top-5-songs.csv")
 
 # closing down the driver
 driver.close()
