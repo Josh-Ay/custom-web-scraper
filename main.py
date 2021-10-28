@@ -103,7 +103,7 @@ else:
             data = pd.DataFrame(top_50_songs, columns=["song", "times_played"])
 
             # writing the dataframe created to a csv file
-            data.to_csv("top-5-songs.csv")
+            data.to_csv("top-50-songs.csv")
 
 # closing down the driver
 driver.close()
