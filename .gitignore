@@ -5,3 +5,4 @@ __pycache__/
 
 .idea/workspace.xml
 venv/
+top-50-songs.csv
